@@ -1,16 +1,17 @@
 import os
 import re
 import subprocess
+from collections import defaultdict
 import numpy as np
 from PIL import Image
 
 # === CONFIGURATION ===
-tool_path = os.path.abspath(r"C:/Users/PC/Downloads/USITv3.0.0/USITv3.0.0/bin")
-dataset_root = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/samples")
-output_dir = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/generated-master-iriscode/master_R")
-master_code_path = os.path.join(output_dir, "master_code.png")
-master_mask_path = os.path.join(output_dir, "master_codemask.png")
-threshold = 0.3511
+tool_path       = os.path.abspath(r"C:/Users/PC/Downloads/USITv3.0.0/USITv3.0.0/bin")
+dataset_root    = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/samples")
+output_dir      = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/generated-master-iriscode/master_casia_L")
+master_code_path= os.path.join(output_dir, "master_code.png")
+master_mask_path= os.path.join(output_dir, "master_codemask.png")
+threshold       = 0.3727
 
 def run_command(cmd):
     normed_cmd = [os.path.normpath(str(c)) for c in cmd]
@@ -22,57 +23,79 @@ def calculate_hd(code1, code2, mask1, mask2):
     match = re.search(r"=\s*([0-9.]+)", result.stdout)
     return float(match.group(1)) if match else None
 
-def load_templates(dataset_root):
+def load_templates(dataset_root, eye=None):
+    """
+    dataset_root: kök klasör
+    eye: "L", "R" veya None
+    """
     templates = []
+    subject_templates = defaultdict(list)
+    
     for subject in sorted(os.listdir(dataset_root)):
-        subject_path = os.path.join(dataset_root, subject)
-        if not os.path.isdir(subject_path):
+        path_subj = os.path.join(dataset_root, subject)
+        if not os.path.isdir(path_subj):
             continue
 
-        subdirs = [d for d in os.listdir(subject_path) if os.path.isdir(os.path.join(subject_path, d))]
-        if 'L' in subdirs or 'R' in subdirs:
-            for eye in ['L', 'R']:
-                eye_path = os.path.join(subject_path, eye)
-                if not os.path.isdir(eye_path):
+        # Altında L/R klasörü var mı diye bak
+        subdirs = [d for d in os.listdir(path_subj) if os.path.isdir(os.path.join(path_subj, d))]
+        is_casia = 'L' in subdirs or 'R' in subdirs
+
+        if is_casia:
+            # CASIA tarzı: L ve R altklasörleri
+            targets = [eye] if eye in ('L','R') else ['L','R']
+            for e in targets:
+                dir_eye = os.path.join(path_subj, e)
+                if not os.path.isdir(dir_eye):
                     continue
-                for file in os.listdir(eye_path):
-                    if file.endswith("_code.png"):
-                        base = file.replace("_code.png", "")
-                        code_path = os.path.join(eye_path, base + "_code.png")
-                        mask_path = os.path.join(eye_path, base + "_codemask.png")
+                for f in os.listdir(dir_eye):
+                    if f.endswith("_code.png"):
+                        base = f[:-9]  # remove _code.png
+                        code_path = os.path.join(dir_eye, base + "_code.png")
+                        mask_path = os.path.join(dir_eye, base + "_codemask.png")
                         if os.path.exists(mask_path):
                             templates.append((subject, base, code_path, mask_path))
+                            subject_templates[subject].append((code_path, mask_path, base))
         else:
-            for file in os.listdir(subject_path):
-                if file.endswith("_code.png"):
-                    base = file.replace("_code.png", "")
-                    code_path = os.path.join(subject_path, base + "_code.png")
-                    mask_path = os.path.join(subject_path, base + "_codemask.png")
+            # IITD tarzı: tek klasör içinde kod dosyaları, dosya adı _L veya _R içeriyorsa filtrele
+            for f in os.listdir(path_subj):
+                if not f.endswith("_code.png"):
+                    continue
+                if eye is None or f.endswith(f"_{eye}_code.png") or f.split('_')[-2] == eye:
+                    base = f[:-9]
+                    code_path = os.path.join(path_subj, base + "_code.png")
+                    mask_path = os.path.join(path_subj, base + "_codemask.png")
                     if os.path.exists(mask_path):
                         templates.append((subject, base, code_path, mask_path))
-    return templates
+                        subject_templates[subject].append((code_path, mask_path, base))
 
-def main():
+    return templates, subject_templates
+
+def main(eye=None):
     print("📥 Loading templates...")
-    templates = load_templates(dataset_root)
-    print(f"✅ Loaded {len(templates)} templates")
+    templates, subject_templates = load_templates(dataset_root, eye=eye)
+    print(f"✅ Loaded {len(templates)} templates (eye={eye})")
 
-    matched_templates = []
+    matched = []
     matched_subjects = set()
 
     for subject, base, code_path, mask_path in templates:
         hd = calculate_hd(master_code_path, code_path, master_mask_path, mask_path)
         if hd is not None and 0.0 < hd <= threshold:
-            matched_templates.append((subject, base, hd))
+            matched.append((subject, base, hd))
             matched_subjects.add(subject)
 
-    print(f"\n🎯 RESULT SUMMARY")
-    print(f"✔️  Matched templates: {len(matched_templates)} / {len(templates)}")
-    print(f"✔️  Unique matched subjects: {len(matched_subjects)}")
+    print("\n🎯 RESULT SUMMARY")
+    print(f"✔️  Matched templates: {len(matched)} / {len(templates)}")
+    print(f"✔️  Unique matched subjects: {len(matched_subjects)}\n")
 
-    print("\n📋 Matched templates:")
-    for subject, base, hd in matched_templates:
+    print("📋 Matched templates:")
+    for subject, base, hd in matched:
         print(f" - {subject}/{base}: HD = {hd:.4f}")
 
 if __name__ == "__main__":
-    main()
+    # Örneğin sadece sol göz için:
+    # main(eye="L")
+    # Sadece sağ göz için:
+    # main(eye="R")
+    # Her iki göz:
+    main(eye="L")

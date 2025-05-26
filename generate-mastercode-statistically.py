@@ -11,7 +11,9 @@ import matplotlib.pyplot as plt
 
 # === CONFIGURATION ===
 tool_path = os.path.abspath(r"C:/Users/PC/Downloads/USITv3.0.0/USITv3.0.0/bin")
+# dataset_root = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/IITD_Database")
 dataset_root = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/samples")
+# dataset_root = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/CASIA-Iris-Syn")
 output_root = os.path.abspath(r"C:/Users/PC/Desktop/ceng/term4.2/ceng507/generated-master-iriscode")
 threshold = 0.32
 
@@ -303,7 +305,7 @@ def main():
     eye = sys.argv[1]
     print(f"👁️ Generating master template for eye: {eye}")
 
-    output_dir = os.path.join(output_root, f"master_{eye}")
+    output_dir = os.path.join(output_root, f"master_casia_{eye}")
     os.makedirs(output_dir, exist_ok=True)
 
     print("📂 Loading templates...")
